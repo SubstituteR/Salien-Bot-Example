@@ -54,8 +54,9 @@ namespace Saliens_Test
             {
                 try
                 {
+                    int Score = player.Zone.Score;
                     await player.ReportScore();
-                    Console.WriteLine($"{{{player.Token}}} Score {player.Zone.Score} Submitted", Color.Green);
+                    Console.WriteLine($"{{{player.Token}}} Score {Score} Submitted", Color.Green);
                     return;
                 }
                 catch (GameTimeNotSync TooEarly)
