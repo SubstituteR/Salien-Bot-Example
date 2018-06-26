@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Saliens;
 using System.Linq;
 using System.Threading.Tasks;
@@ -127,16 +127,11 @@ namespace Saliens_Test
 
         static void Main(string[] args)
         {
-            Run().GetAwaiter().GetResult();
             try
             {
-                
+                Run().GetAwaiter().GetResult();
             }
-            catch (InvalidGameResponse ex)
-            {
-                Console.WriteLine(ex.EResult);
-            }
-            Console.Read();
+            catch (Exception) { }
         }
     }
 }
