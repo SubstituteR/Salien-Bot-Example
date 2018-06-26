@@ -1,43 +1,141 @@
 ﻿using System;
 using Saliens;
+using System.Linq;
+using System.Threading.Tasks;
+using Console = Colorful.Console;
+using System.Drawing;
+using System.Collections.Generic;
+using Colorful;
+using System.Collections.Concurrent;
 
 namespace Saliens_Test
 {
     class Program
     {
-        static void Main(string[] args)
+        private static StyleSheet PrimaryStyle = new StyleSheet(Color.White);
+        private static StyleSheet NumberStyle = new StyleSheet(Color.White);
+        private static ConcurrentDictionary<string, PlayerInfo> Players = new ConcurrentDictionary<string, PlayerInfo>();
+        static void SetupStyle()
         {
-            DateTimeOffset now = DateTimeOffset.Now;
+            PrimaryStyle.AddStyle("(?i)active", Color.ForestGreen);
+            PrimaryStyle.AddStyle("(?i)captured", Color.DarkRed);
+            PrimaryStyle.AddStyle("(?i)locked", Color.Yellow);
+            NumberStyle.AddStyle("[0-9.]*%", Color.Orange);
+        }
+
+        static void PrintHeader()
+        {
+            FigletFont font = FigletFont.Load("poison.flf");
+            Figlet figlet = new Figlet(font);
+
+            Console.WriteWithGradient(figlet.ToAscii("Sale Bot").ToString(), Color.FromArgb(0,255,0), Color.FromArgb(0, 64, 0), 3);
+            Console.WriteLine();
+            Console.ResetColor();
+        }
+        static async Task PrintPlanetInfo()
+        {
+            await Planet.UpdateActive();
+            Console.WriteLineStyled($"Planets, {Planet.Active.Count()} Active / {Planet.Captured.Count()} Captured / {Planet.Locked.Count()} Locked / {Planet.All.Count()} Total", PrimaryStyle);
+            Console.WriteLineStyled($"Total Zone Completion {Planet.All.CompletionPercent()}%, Active Zone Completion {Planet.Active.CompletionPercent()}%", NumberStyle);
+        }
+
+        static void PrintPlayerInfo()
+        {
+            foreach(PlayerInfo player in Players.Values)
+            {
+                Console.WriteLineStyled($"{{{player.Token}}} Level {player.Level} [{player.Score} -> {player.NextLevelScore}] {Math.Round((float)player.Score / player.NextLevelScore * 100, 2)}%", NumberStyle);
+            }
+        }
+
+        static async Task SubmitScore(PlayerInfo player)
+        {
+            int retries = 0;
+            while (retries < 3)
+            {
+                try
+                {
+                    await player.ReportScore();
+                    Console.WriteLine($"{{{player.Token}}} Score {player.Zone.Score} Submitted", Color.Green);
+                    return;
+                }
+                catch (GameTimeNotSync TooEarly)
+                {
+                    retries++;
+                    Console.WriteLine($"Score Submission Too Early [{TooEarly.EResult}] -> Wait 1 Second and Retry", Color.Red);
+                    await Task.Delay(1000);
+                }
+            }
+            Console.WriteLine($"{{{player.Token}}} Score Submission Failure After 3 Retries", Color.Red);
+        }
+
+        static void GetPlayers()
+        {
+            if (System.IO.File.Exists($"{Environment.CurrentDirectory}/tokens.txt"))
+            {
+                foreach(string Token in System.IO.File.ReadAllLines($"{Environment.CurrentDirectory}/tokens.txt"))
+                {
+                    try
+                    {
+                        PlayerInfo player = new PlayerInfo(Token);
+                        Players.AddOrUpdate(Token, player, (k,v) => v = player);
+                        Console.WriteLine($"{Token} -> Added", Color.Green);
+                    }
+                    catch(Exception)
+                    {
+                        Console.WriteLine($"{Token} -> Failed To Add", Color.Red);
+                    }
+                }
+            }
+            else
+            {
+                Console.WriteLine($"No Tokens! -> Put Token Here [{Environment.CurrentDirectory}/tokens.txt]", Color.Red);
+                Environment.Exit(1);
+            }
+        }
+
+        static async Task Run()
+        {
+            SetupStyle();
+            PrintHeader();
+            GetPlayers();
+            await Planet.UpdateAll(); //Precache
             while (true)
             {
                 try
                 {
-                    PlayerInfo player = PlayerInfo.Get("Your Token Here");
-                    Console.WriteLine(string.Format("Player XP: {0} , Next XP: {1} , {2}%", player.Score, player.NextLevelScore, Math.Round((float)player.Score / player.NextLevelScore * 100, 2)));
-
-                    int val = ((player.NextLevelScore - player.Score) / 2400) * 110;
-
-                    DateTimeOffset est = now.AddSeconds(val);
-                    Console.WriteLine(string.Format("ETA to next level {0} hr {1} min {2} sec", est.Hour, est.Minute, est.Second));
-                    player.LeavePlanet(false);
+                    await PrintPlanetInfo();
                     Planet planet = Planet.FirstAvailable;
                     Zone zone = planet.FirstAvailableZone;
-                    Console.WriteLine(Planet.FirstAvailable.Info.Name);
-                    Console.WriteLine(string.Format("zone percentage {0}, zone position {1}, zone difficulty {2}", zone.CaptureProgress, zone.Position, zone.Difficulty));
-                    player.JoinPlanet(planet.ID, false);
-                    player.JoinZone(zone.Position);
-                    Console.WriteLine("Sleeping 110 seconds");
-                    System.Threading.Thread.Sleep(110 * 1000);
-                    player.ReportScore();
-                    Console.WriteLine("-----");
-                }
-                catch (Exception ex)
+                    PrintPlayerInfo();
+                    await Task.WhenAll(Players.Select(x => x.Value.JoinPlanet(planet)));
+                    Console.WriteLine($"Joined Planet {planet.Info.Name}", Color.Orange);
+
+                    await Task.WhenAll(Players.Select(x => x.Value.JoinZone(zone.Position)));
+                    Console.WriteLine($"Joined Zone {zone.Position} [{Math.Round(zone.CaptureProgress * 100, 2)}%] - {zone.Difficulty}", NumberStyle);
+
+                    Console.WriteLine("Sleeping 110 seconds", Color.Yellow);
+                    await Task.Delay(110 * 1000);
+                    Console.WriteLine($"Last Score {DateTime.Now.ToString()}", Color.Yellow);
+                    await Task.WhenAll(Players.Select(x => SubmitScore(x.Value)));
+                }catch (Exception ex)
                 {
                     Console.WriteLine(ex.ToString());
+                    //weeee
                 }
             }
-            
-            Console.WriteLine("==");
+        }
+
+        static void Main(string[] args)
+        {
+            Run().GetAwaiter().GetResult();
+            try
+            {
+                
+            }
+            catch (InvalidGameResponse ex)
+            {
+                Console.WriteLine(ex.EResult);
+            }
             Console.Read();
         }
     }
