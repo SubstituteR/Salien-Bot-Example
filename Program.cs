@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Saliens;
 using System.Linq;
 using System.Threading.Tasks;
@@ -7,6 +7,7 @@ using System.Drawing;
 using System.Collections.Generic;
 using Colorful;
 using System.Collections.Concurrent;
+using System.Net.Http;
 
 namespace Saliens_Test
 {
@@ -70,6 +71,11 @@ namespace Saliens_Test
                     Console.WriteLine($"{{{player.Token}}} Zone was Captured, Unable to Submit Score.", Color.Red);
                     return;
                 }
+                catch (InvalidGameResponse IGR)
+                {
+                    Console.WriteLine($"{{{player.Token}}} Bad Response {IGR.EResult} - {IGR.EReason}.", Color.Red);
+                    return;
+                }
             }
             Console.WriteLine($"{{{player.Token}}} Score Submission Failure After 3 Retries", Color.Red);
         }
@@ -123,7 +129,8 @@ namespace Saliens_Test
             SetupStyle();
             PrintHeader();
             GetPlayers();
-            await Planet.UpdateAll(); //Precache
+            await Planet.UpdateAll();
+
             while (true)
             {
                 try
