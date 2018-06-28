@@ -54,8 +54,9 @@ namespace Saliens_Test
             {
                 try
                 {
+                    int Score = player.Zone.Score;
                     await player.ReportScore();
-                    Console.WriteLine($"{{{player.Token}}} Score {player.Zone.Score} Submitted", Color.Green);
+                    Console.WriteLine($"{{{player.Token}}} Score {Score} Submitted", Color.Green);
                     return;
                 }
                 catch (GameTimeNotSync TooEarly)
@@ -63,6 +64,11 @@ namespace Saliens_Test
                     retries++;
                     Console.WriteLine($"Score Submission Too Early [{TooEarly.EResult}] -> Wait 1 Second and Retry", Color.Red);
                     await Task.Delay(1000);
+                }
+                catch (GameExpired)
+                {
+                    Console.WriteLine($"{{{player.Token}}} Zone was Captured, Unable to Submit Score.", Color.Red);
+                    return;
                 }
             }
             Console.WriteLine($"{{{player.Token}}} Score Submission Failure After 3 Retries", Color.Red);
@@ -93,6 +99,25 @@ namespace Saliens_Test
             }
         }
 
+        static async Task<Planet> JoinPlanet()
+        {
+            Planet[] planets = Planet.SortedPlanets.ToArray();
+            int skip = 0;
+            while (skip < planets.Count())
+            {
+                try
+                {
+                    await Task.WhenAll(Players.Select(x => x.Value.JoinPlanet(planets[skip])));
+                    return planets[skip];
+                }
+                catch (GameFail)
+                {
+                    skip++;
+                }
+            }
+            throw new NoPlanetException();
+        }
+
         static async Task Run()
         {
             SetupStyle();
@@ -104,7 +129,7 @@ namespace Saliens_Test
                 try
                 {
                     await PrintPlanetInfo();
-                    Planet planet = Planet.FirstAvailable;
+                    Planet planet = await JoinPlanet();
                     Zone zone = planet.FirstAvailableZone;
                     PrintPlayerInfo();
                     await Task.WhenAll(Players.Select(x => x.Value.JoinPlanet(planet)));
@@ -127,16 +152,11 @@ namespace Saliens_Test
 
         static void Main(string[] args)
         {
-            Run().GetAwaiter().GetResult();
             try
             {
-                
+                Run().GetAwaiter().GetResult();
             }
-            catch (InvalidGameResponse ex)
-            {
-                Console.WriteLine(ex.EResult);
-            }
-            Console.Read();
+            catch (Exception) { }
         }
     }
 }
