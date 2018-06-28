@@ -44,7 +44,7 @@ namespace Saliens_Test
         {
             foreach(PlayerInfo player in Players.Values)
             {
-                Console.WriteLineStyled($"{{{player.Token}}} Level {player.Level} [{player.Score} -> {player.NextLevelScore}] {Math.Round((float)player.Score / player.NextLevelScore * 100, 2)}%", NumberStyle);
+                Console.WriteLineStyled($"{{{player.Token}}} Level {player.Level} [{player.Score - PlayerInfo.XPForLevel(player.Level)} -> {player.NextLevelScore - PlayerInfo.XPForLevel(player.Level)}] {Math.Round((float)(player.Score - PlayerInfo.XPForLevel(player.Level)) / (player.NextLevelScore - PlayerInfo.XPForLevel(player.Level)) * 100, 2)}%", NumberStyle);
             }
         }
 
@@ -68,7 +68,12 @@ namespace Saliens_Test
                 }
                 catch (GameExpired)
                 {
-                    Console.WriteLine($"{{{player.Token}}} Zone was Captured, Unable to Submit Score.", Color.Red);
+                    Console.WriteLine($"{{{player.Token}}} Zone was Captured (EXPIRED), Unable to Submit Score.", Color.Red);
+                    return;
+                }
+                catch (GameNoMatch)
+                {
+                    Console.WriteLine($"{{{player.Token}}} Zone was Captured (NO MATCH), Unable to Submit Score.", Color.Red);
                     return;
                 }
                 catch (InvalidGameResponse IGR)
@@ -151,7 +156,7 @@ namespace Saliens_Test
                     await Task.WhenAll(Players.Select(x => SubmitScore(x.Value)));
                 }catch (Exception ex)
                 {
-                    Console.WriteLine(ex.ToString());
+                    Console.WriteLine(ex.Message);
                     //weeee
                 }
             }
