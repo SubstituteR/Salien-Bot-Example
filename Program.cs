@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using Colorful;
 using System.Collections.Concurrent;
 using System.Net.Http;
+using System.Net;
 
 namespace Saliens_Test
 {
@@ -15,7 +16,8 @@ namespace Saliens_Test
     {
         private static StyleSheet PrimaryStyle = new StyleSheet(Color.White);
         private static StyleSheet NumberStyle = new StyleSheet(Color.White);
-        private static ConcurrentDictionary<string, PlayerInfo> Players = new ConcurrentDictionary<string, PlayerInfo>();
+        public static ConcurrentDictionary<string, PlayerInfo> Players { get; private set; }  = new ConcurrentDictionary<string, PlayerInfo>();
+
         static void SetupStyle()
         {
             PrimaryStyle.AddStyle("(?i)active", Color.ForestGreen);
@@ -55,8 +57,18 @@ namespace Saliens_Test
             {
                 try
                 {
-                    int Score = player.Zone.Score;
-                    await player.ReportScore();
+                    int Score = player.MaxMatchScore;
+                    bool useheal = false;
+                    if (player.Zone.IsActiveBossZone)
+                    {
+                        useheal = (DateTimeOffset.Now > player.BossMatch.HealLastUsed);
+                        await player.ReportBossDamage(0, useheal);
+                    }
+                    else
+                    {
+                        await player.ReportScore();
+                    }
+                    
                     Console.WriteLine($"{{{player.Token}}} Score {Score} Submitted", Color.Green);
                     return;
                 }
@@ -129,8 +141,27 @@ namespace Saliens_Test
             throw new NoPlanetException();
         }
 
+        static async Task JoinZone(PlayerInfo player)
+        {
+            Zone zone = player.Planet.FirstAvailableZone;
+            try
+            {
+                if (zone.IsActiveBossZone) await player.JoinBossZone(zone.Position); else await player.JoinZone(zone.Position);
+            }
+            catch(GameInvalidState)
+            {
+                await player.LeaveZone();
+                await JoinZone(player);
+            }
+            catch (InvalidGameResponse IGR)
+            {
+                Console.WriteLine($"{{{player.Token}}} Bad Response {IGR.EResult} - {IGR.EReason}.", Color.Red);
+            }
+        }
+
         static async Task Run()
         {
+            //WebServer.Start(); -> Not Used Currently.
             SetupStyle();
             PrintHeader();
             GetPlayers();
@@ -140,6 +171,10 @@ namespace Saliens_Test
             {
                 try
                 {
+                    if (Planet.Active.AllZones().Any(x => x.Type == ZoneType.Boss && x.BossActive == true))
+                    {
+                        Console.WriteLine("!!! BOSS IS ACTIVE !!!");
+                    }
                     await PrintPlanetInfo();
                     Planet planet = await JoinPlanet();
                     Zone zone = planet.FirstAvailableZone;
@@ -147,14 +182,17 @@ namespace Saliens_Test
                     await Task.WhenAll(Players.Select(x => x.Value.JoinPlanet(planet)));
                     Console.WriteLine($"Joined Planet {planet.Info.Name}", Color.Orange);
 
-                    await Task.WhenAll(Players.Select(x => x.Value.JoinZone(zone.Position)));
+                    await Task.WhenAll(Players.Select(x => JoinZone(x.Value)));
+
                     Console.WriteLine($"Joined Zone {zone.Position} [{Math.Round(zone.CaptureProgress * 100, 2)}%] - {zone.Difficulty}", NumberStyle);
 
-                    Console.WriteLine("Sleeping 110 seconds", Color.Yellow);
-                    await Task.Delay(110 * 1000);
+                    Console.WriteLine($"Sleeping {zone.Tickrate / 1000} seconds", Color.Yellow);
+                    await Task.Delay(zone.Tickrate);
                     Console.WriteLine($"Last Score {DateTime.Now.ToString()}", Color.Yellow);
                     await Task.WhenAll(Players.Select(x => SubmitScore(x.Value)));
-                }catch (Exception ex)
+
+                }
+                catch (Exception ex)
                 {
                     Console.WriteLine(ex.Message);
                     //weeee
