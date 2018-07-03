@@ -59,10 +59,14 @@ namespace Saliens_Test
                 {
                     int Score = player.MaxMatchScore;
                     bool useheal = false;
-                    if (player.Zone.IsActiveBossZone)
+                    if (player.InBossMatch)
                     {
                         useheal = (DateTimeOffset.Now > player.BossMatch.HealLastUsed);
+                        Console.WriteLine($"Next heal in {Math.Abs((DateTimeOffset.Now - player.BossMatch.HealLastUsed).TotalSeconds)}");
+                        Console.WriteLine($"Boss HP: {player.BossMatch.Data.Status.HP} / {player.BossMatch.Data.Status.MaxHP}");
+                        Console.WriteLine($"Total Heals: {player.BossMatch.Data.TeamHealsUsed} , Total Lasers: {player.BossMatch.Data.LasersUsed}");
                         await player.ReportBossDamage(0, useheal);
+                        player.BossMatch.HealLastUsed = DateTimeOffset.Now.AddSeconds(120);
                     }
                     else
                     {
